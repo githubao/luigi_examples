@@ -114,15 +114,35 @@ def rdd_df():
     df2.foreach(print)
 
 
+def explore():
+    sc = SparkContext()
+
+    # flatMap
+    # rdd = sc.parallelize([('a', [1, 2]), ('b', [3, 4])])
+    # print(rdd.flatMap(func).collect())
+
+    # aggregate
+    rdd2 = sc.parallelize([1, 2, 3, 4, 5, 6])
+    print(rdd2.aggregate((0, 0), lambda zero, num: (zero[0] + num, zero[1] + 1),
+                         lambda part1, part2: (part1[0] + part2[0], part1[1] + part2[1])))
+
+
+def func(item):
+    for num in [1, 2, 3]:
+        for c in item[1]:
+            yield (item[0], c, num), 1
+
+
 def tmp():
     print(', '.join(str(i) for i in [1, 2, 3]))
 
 
 def run():
-    transform()
+    # transform()
     # reduce0()
     # mapred()
     # rdd_df()
+    explore()
 
 
 if __name__ == '__main__':
