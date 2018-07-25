@@ -11,7 +11,7 @@
 from __future__ import division, print_function
 from pyspark import SparkContext, Row
 from pyspark.sql.types import *
-from pyspark.sql import SQLContext, functions as F
+from pyspark.sql import SQLContext, functions
 
 
 def transform():
@@ -127,6 +127,41 @@ def explore():
                          lambda part1, part2: (part1[0] + part2[0], part1[1] + part2[1])))
 
 
+def advanced():
+    sc = SparkContext()
+    sqlCtx = SQLContext(sc)
+
+    simple_udf = functions.udf(lambda age: 'adult' if age > 18 else 'child', StringType())
+
+    df = sqlCtx.createDataFrame([{'name': 'a', 'age': 15}])
+    df = df.withColumn('aged', simple_udf(df.age))
+
+    # df = df.select('age', simple_udf('age').alias('aged'))
+
+    df.show()
+
+
+def group_agg():
+    sc = SparkContext()
+    sql_ctx = SQLContext(sc)
+
+    scheme = StructType([
+        StructField('value', StringType()),
+        StructField('ut', IntegerType()),
+        StructField('uid', IntegerType()),
+    ])
+
+    rdd = sc.parallelize([('a', 1, 1), ('b', 1, 2), ('c', 2, 1), ('d', 2, 2), ('e', 1, 1)])
+
+    df = sql_ctx.createDataFrame(rdd, scheme)
+
+    df = df.groupBy(['ut', 'uid']).agg(functions.count('*').alias('cnt'))
+
+    # df.show()
+
+    df.toJSON().foreach(print)
+
+
 def func(item):
     for num in [1, 2, 3]:
         for c in item[1]:
@@ -142,7 +177,9 @@ def run():
     # reduce0()
     # mapred()
     # rdd_df()
-    explore()
+    # explore()
+    # advanced()
+    group_agg()
 
 
 if __name__ == '__main__':
