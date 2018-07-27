@@ -9,9 +9,13 @@
 """
 
 from __future__ import division, print_function
+
+import json
+from operator import add
+
 from pyspark import SparkContext, Row
 from pyspark.sql.types import *
-from pyspark.sql import SQLContext, functions
+from pyspark.sql import SQLContext, functions, Window
 
 
 def transform():
@@ -162,6 +166,79 @@ def group_agg():
     df.toJSON().foreach(print)
 
 
+def group_agg2():
+    sc = SparkContext()
+    sql_ctx = SQLContext(sc)
+
+    scheme = StructType([
+        StructField('region', StringType()),
+        StructField('uid', IntegerType()),
+        StructField('read', IntegerType()),
+    ])
+
+    rdd = sc.parallelize([('bj', 1, 10), ('bj', 1, 20), ('sh', 3, 30), ('sh', 3, 40), ('sh', 5, 70)])
+
+    df = sql_ctx.createDataFrame(rdd, scheme)
+
+    df = df.groupBy(['region', 'uid']).agg(functions.sum('read').alias('read')) \
+        .groupBy(['region', 'read']).agg(functions.count('*').alias('score'))
+
+    df.show()
+
+
+def window_sample():
+    def make_keywords_count_kv(r):
+        for keyword in r.keywords:
+            yield (r.region, keyword), r.twi
+
+    def format_db((region, records)):
+        out = [{'keyword': r.keyword, 'score': r.score} for r in records]
+        return region, 'keywords', json.dumps(out)
+
+    sc = SparkContext()
+    sql_ctx = SQLContext(sc)
+
+    scheme = StructType([
+        StructField('region', StringType()),
+        StructField('keywords', ArrayType(StringType())),
+        StructField('twi', IntegerType()),
+    ])
+
+    rdd = sc.parallelize(
+        [('bj', ['ni'], 10), ('bj', ['ni'], 10), ('sh', ['ni'], 20), ('sh', ['ni'], 30), ('sh', ['wo'], 70)])
+    df = sql_ctx.createDataFrame(rdd, scheme)
+
+    window = Window.partitionBy('region').orderBy(functions.desc('score'))
+
+    df = df.rdd \
+        .flatMap(make_keywords_count_kv) \
+        .reduceByKey(add) \
+        .map(lambda (k, v): list(k) + [v]) \
+        .toDF(['region', 'keyword', 'score']) \
+        .withColumn('rank', functions.row_number().over(window)) \
+        .where('rank<=30') \
+        .coalesce(500) \
+        .rdd \
+        .keyBy(lambda r: r.region) \
+        .groupByKey() \
+        .map(format_db).toDF(['region', 'keywords', 'scores'])
+
+    for item in df.toJSON().take(10):
+        print(item)
+
+
+def lang():
+    exists = []
+    for k in ['hello', 'hi']:
+        exists.append('{}_exist = true'.format(k))
+
+    terms = []
+    if len(exists) > 0:
+        terms.append('(' + ' and '.join(exists) + ')')
+
+    print('  or  '.join(terms))
+
+
 def func(item):
     for num in [1, 2, 3]:
         for c in item[1]:
@@ -179,7 +256,10 @@ def run():
     # rdd_df()
     # explore()
     # advanced()
-    group_agg()
+    # group_agg()
+    # lang()
+    # group_agg2()
+    window_sample()
 
 
 if __name__ == '__main__':
